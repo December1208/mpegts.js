@@ -242,7 +242,7 @@ class TSDemuxer extends BaseDemuxer {
             }
 
             if (adaptation_field_control == 0x01 || adaptation_field_control == 0x03) {
-                if (pid === 0 || pid === this.current_pmt_pid_) {  // PAT(pid === 0) or PMT
+                if (pid === 0x72b || pid === this.current_pmt_pid_) {  // PAT(pid === 0) or PMT
                     if (payload_unit_start_indicator) {
                         let pointer_field = data[ts_payload_start_index];
                         // skip pointer_field and strange data
@@ -250,7 +250,7 @@ class TSDemuxer extends BaseDemuxer {
                     }
                     let ts_payload_length = 188 - ts_payload_start_index;
 
-                    if (pid === 0) {
+                    if (pid === 0x72b) {
                         this.parsePAT(chunk,
                                       offset + ts_payload_start_index,
                                       ts_payload_length,

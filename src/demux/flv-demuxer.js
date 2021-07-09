@@ -22,6 +22,7 @@ import SPSParser from './sps-parser.js';
 import DemuxErrors from './demux-errors.js';
 import MediaInfo from '../core/media-info.js';
 import {IllegalStateException} from '../utils/exception.js';
+import CryptoJS from "crypto-js";
 
 function Swap16(src) {
     return (((src >>> 8) & 0xFF) |
@@ -49,6 +50,7 @@ class FLVDemuxer {
         this.TAG = 'FLVDemuxer';
 
         this._config = config;
+        this._is_encryption =
 
         this._onError = null;
         this._onMediaInfo = null;
@@ -314,7 +316,7 @@ class FLVDemuxer {
                 break;
             }
 
-            if (tagType !== 8 && tagType !== 9 && tagType !== 18) {
+            if (tagType !== 24 && tagType !== 25 && tagType !== 32) {
                 Log.w(this.TAG, `Unsupported tag type ${tagType}, skipped`);
                 // consume the whole tag (skip it)
                 offset += 11 + dataSize + 4;
@@ -336,14 +338,15 @@ class FLVDemuxer {
             let dataOffset = offset + 11;
 
             switch (tagType) {
-                case 8:  // Audio
+                case 24:  // Audio
                     this._parseAudioData(chunk, dataOffset, dataSize, timestamp);
                     break;
-                case 9:  // Video
+                case 25:  // Video
                     this._parseVideoData(chunk, dataOffset, dataSize, timestamp, byteStart + offset);
                     break;
-                case 18:  // ScriptDataObject
+                case 32:  // ScriptDataObject
                     this._parseScriptData(chunk, dataOffset, dataSize);
+                    offset += 12
                     break;
             }
 
@@ -366,7 +369,22 @@ class FLVDemuxer {
     }
 
     _parseScriptData(arrayBuffer, dataOffset, dataSize) {
-        let scriptData = AMF.parseScriptData(arrayBuffer, dataOffset, dataSize);
+        let new_buffer = arrayBuffer.slice(dataOffset, dataOffset+384)
+        let new_data = Array.prototype.map.call(new Uint8Array(new_buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
+        console.log(new_data)
+        let key = "f9d356740738efa8800a7ecdea382881"
+        let iv = "de7fb7bf72ebf2d4a1083cb2a800ead3"
+        let decrypt_data = CryptoJS.AES.decrypt(new_data, CryptoJS.enc.Hex.parse(key), {
+            iv: CryptoJS.enc.Hex.parse(iv),
+            mode: CryptoJS.mode.CBC,
+            padding: CryptoJS.pad.Pkcs7,
+            format: CryptoJS.format.Hex,
+        }).toString(CryptoJS.enc.Hex)
+        console.log(decrypt_data)
+        new_buffer = new Uint8Array(decrypt_data.match(/[\da-f]{2}/gi).map(function (h) {
+            return parseInt(h, 16)
+        })).buffer
+        let scriptData = AMF.parseScriptData(new_buffer, 0, dataSize);
 
         if (scriptData.hasOwnProperty('onMetaData')) {
             if (scriptData.onMetaData == null || typeof scriptData.onMetaData !== 'object') {
