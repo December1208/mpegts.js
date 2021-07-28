@@ -316,7 +316,7 @@ class FLVDemuxer {
                 break;
             }
 
-            if (tagType !== 24 && tagType !== 25 && tagType !== 32) {
+            if (tagType !== 8 && tagType !== 9 && tagType !== 18) {
                 Log.w(this.TAG, `Unsupported tag type ${tagType}, skipped`);
                 // consume the whole tag (skip it)
                 offset += 11 + dataSize + 4;
@@ -337,16 +337,31 @@ class FLVDemuxer {
 
             let dataOffset = offset + 11;
 
+            let new_buffer = chunk.slice(dataOffset, dataOffset + dataSize)
+            let new_data = Array.prototype.map.call(new Uint8Array(new_buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
+            let key = "c4ee6a6a83f6665f2d7a01ade6bc028f"
+            let iv = "47e7a4255782bbcf5f7cf177850ac0ec"
+            let decrypt_data = CryptoJS.AES.decrypt(new_data, CryptoJS.enc.Hex.parse(key), {
+                iv: CryptoJS.enc.Hex.parse(iv),
+                mode: CryptoJS.mode.CBC,
+                padding: CryptoJS.pad.Pkcs7,
+                format: CryptoJS.format.Hex,
+            }).toString(CryptoJS.enc.Hex)
+            new_buffer = new Uint8Array(decrypt_data.match(/[\da-f]{2}/gi).map(function (h) {
+                return parseInt(h, 16)
+            })).buffer
+            let new_dataOffset = 0
+            let new_dataSize = new_buffer.byteLength
+
             switch (tagType) {
-                case 24:  // Audio
-                    this._parseAudioData(chunk, dataOffset, dataSize, timestamp);
+                case 8:  // Audio
+                    this._parseAudioData(new_buffer, new_dataOffset, new_dataSize, timestamp);
                     break;
-                case 25:  // Video
-                    this._parseVideoData(chunk, dataOffset, dataSize, timestamp, byteStart + offset);
+                case 9:  // Video
+                    this._parseVideoData(new_buffer, new_dataOffset, new_dataSize, timestamp, byteStart + offset);
                     break;
-                case 32:  // ScriptDataObject
-                    this._parseScriptData(chunk, dataOffset, dataSize);
-                    offset += 12
+                case 18:  // ScriptDataObject
+                    this._parseScriptData(new_buffer, new_dataOffset, new_dataSize);
                     break;
             }
 
@@ -369,22 +384,7 @@ class FLVDemuxer {
     }
 
     _parseScriptData(arrayBuffer, dataOffset, dataSize) {
-        let new_buffer = arrayBuffer.slice(dataOffset, dataOffset+384)
-        let new_data = Array.prototype.map.call(new Uint8Array(new_buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
-        console.log(new_data)
-        let key = "f9d356740738efa8800a7ecdea382881"
-        let iv = "de7fb7bf72ebf2d4a1083cb2a800ead3"
-        let decrypt_data = CryptoJS.AES.decrypt(new_data, CryptoJS.enc.Hex.parse(key), {
-            iv: CryptoJS.enc.Hex.parse(iv),
-            mode: CryptoJS.mode.CBC,
-            padding: CryptoJS.pad.Pkcs7,
-            format: CryptoJS.format.Hex,
-        }).toString(CryptoJS.enc.Hex)
-        console.log(decrypt_data)
-        new_buffer = new Uint8Array(decrypt_data.match(/[\da-f]{2}/gi).map(function (h) {
-            return parseInt(h, 16)
-        })).buffer
-        let scriptData = AMF.parseScriptData(new_buffer, 0, dataSize);
+        let scriptData = AMF.parseScriptData(arrayBuffer, dataOffset, dataSize);
 
         if (scriptData.hasOwnProperty('onMetaData')) {
             if (scriptData.onMetaData == null || typeof scriptData.onMetaData !== 'object') {
